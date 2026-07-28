@@ -16,6 +16,7 @@ import pathlib
 import scipy.stats as Stats
 import threading
 import multiprocessing
+import signal
 
 
 """
@@ -23,7 +24,7 @@ Initializes reader and interpreter
 Read method will pull data, interpret it, and output a cleaned array
 """
 class Tactile_Sensor():
-    def __init__(self, tactile_name, port, baudrate=115200, num_taxels_per_sensor=7, num_sensors=2, read_method="hex", use_data_zeroing=False, use_data_smoothing=False, use_data_normalization=False, normalization_method="logistic"):
+    def __init__(self, tactile_name, port, reading_rate_Hz, baudrate=115200, num_taxels_per_sensor=7, num_sensors=2, read_method="hex", use_data_zeroing=False, use_data_smoothing=False, use_data_normalization=False, normalization_method="logistic"):
         # set the name of the tactile sensor
         self.tactile_name = tactile_name.replace(" ", "_")
 
@@ -63,7 +64,7 @@ class Tactile_Sensor():
             normalization_method = normalization_method
         )
 
-        self.read_period = 0.05
+        self.read_period = 1/reading_rate_Hz
         self.recording = False
         self.calibrated = False
 
@@ -74,8 +75,9 @@ class Tactile_Sensor():
     def is_calibrated(self):
         return(self.calibrated)
 
-    def enable_recording(self):
+    def enable_recording(self, concurrency_method):
         self.recording = True
+        self.concurrency_method = concurrency_method.upper()
     
     def disable_recording(self):
         self.recording = False
@@ -128,7 +130,8 @@ class Tactile_Sensor():
         print(f"[{self.tactile_name}] Tactor calibrated")
 
 
-    def start(self):
+
+    def start(self, concurrency_method, storage_path=None, start_time=None):
         print(f"[{self.tactile_name}] Starting tactor...")
         if(self.is_recording()):
             print(f"[{self.tactile_name}] Tactor already started")
@@ -138,21 +141,25 @@ class Tactile_Sensor():
             print(f"[{self.tactile_name}] Tactor not calibrated...")
             self.calibrate()
 
-        self.enable_recording()
+        self.enable_recording(concurrency_method)
 
-        multiprocessing.Process
-        self.tactile_recording_thread = threading.Thread(target=self.record, args=())
+        match(concurrency_method.upper()):
+            case "THREAD":
+                print(f"[{self.tactile_name}] Starting tactor thread")
+                self.start_data_thread()
+            case "PROCESS":
+                print(f"[{self.tactile_name}] Starting tactor process")
+                self.start_recording_process(storage_path, start_time)
+            case _:
+                raise(Exception(f"Invalid Concurrency Method: {concurrency_method}"))
+
+
+
+    def start_data_thread(self):
+        self.tactile_recording_thread = threading.Thread(target=self.gather_readings, args=())
         self.tactile_recording_thread.start()
-        #self.executor = ThreadPoolExecutor(max_workers=5)
-        #self.executor.submit(self.record)
 
-
-    def stop(self):
-        with threading.Lock():
-            self.disable_recording()
-
-
-    def record(self):
+    def gather_readings(self):
         print(f"[{self.tactile_name}] Recording started @ {1/self.read_period:.2f} Hz")
         while(self.is_recording()):
             process_start_time = time.perf_counter()
@@ -170,6 +177,85 @@ class Tactile_Sensor():
                 time.sleep(remaining_time)
             else:
                 print(f"WARNING: {self.tactile_name} has a negative wait time for recording (skipping wait)")
+
+
+
+    def start_recording_process(self, storage_path, start_time):
+        if(storage_path == None):
+            print("WARNING: Using default path to save tactile recording")
+            storage_path = pathlib.Path(__file__).parent / "data" / "tactile"
+            storage_path.mkdir(exist_ok=True, parents=True)
+        if(start_time == None):
+            start_time = 0
+        file_path = storage_path / f"{self.tactile_name}_tactor_data.csv"
+        self.tactile_recording_process = multiprocessing.Process(target=self.record_readings, args=(file_path, start_time))
+        self.tactile_recording_process.start()
+
+    def record_readings(self, data_path, start_time):
+        try:
+            signal.signal(signal.SIGTERM, self.exit_exception)
+            with open(str(data_path), "w") as csv_data_saver:
+                csv_data_saver.write("time_s,L6,L5,L4,L3,L2,L1,L0,R6,R5,R4,R3,R2,R1,R0,\n")
+
+            while(self.is_recording()):
+                process_start_time = time.time()
+
+                # keep reading data until a tactile reading is successfully read
+                success, tactile_reading = self.tactile_reader.read_tactile_sensor()
+                while(not success):
+                    print(f"[{self.tactile_name.upper()}] TACTILE READING FAILED, TRYING AGAIN")
+                    success, tactile_reading = self.tactile_reader.read_tactile_sensor()
+                self.last_read_success = success
+                self.last_raw_readout = tactile_reading
+
+                #print(tactile_reading)
+                tactor_data_string = ""
+                for d in tactile_reading:
+                    tactor_data_string += f"{d},"
+                with open(str(data_path), "a") as csv_data_saver:
+                    csv_data_saver.write(f"{process_start_time-start_time:.3f},{tactor_data_string}\n")
+
+                # compute time until next frame
+                process_end_time = time.time()
+                process_time = process_end_time - process_start_time
+                remaining_time = self.read_period - process_time
+                if(remaining_time >= 0):
+                    time.sleep(remaining_time)
+                else:
+                    print(f"WARNING: {self.tactile_name} has a negative wait time until next read (skipping wait)")
+
+        except Exception as e:
+            print("-------------------------")
+            print("EXCEPTION:", e)
+            print("-------------------------")
+        finally:
+            print(f"[{self.tactile_name}] STOPPING PROCESS")
+
+    # code modified from https://stackoverflow.com/questions/42560706/how-to-execute-code-just-before-terminating-the-process-in-python
+    def exit_exception(self, *args):
+        print(f"[{self.tactile_name}] TERMINATING PROCESS")
+        raise(Exception("Termination Exception: needed to exit process"))
+
+
+
+    def stop(self):
+        if(not self.is_recording()):
+            print(f"[{self.tactile_name}] trying to stop tactile sensor when it is not started (skipping command)")
+            return
+
+        self.disable_recording()
+    
+        match(self.concurrency_method):
+            case "THREAD":
+                print(f"[{self.tactile_name}] Stoping tactor thread")
+
+            case "PROCESS":
+                print(f"[{self.tactile_name}] stopping tactor process")
+                self.tactile_recording_process.terminate()
+
+            case _:
+                raise(Exception(f"Invalid Concurrency Method: {self.concurrency_method}"))
+
 
 
     def get_next_tactile_reading(self):
@@ -777,22 +863,31 @@ if(__name__ == "__main__"):
     tactile_sensor = Tactile_Sensor(
         tactile_name = "test_tactor",
         port = "/dev/ttyACM0", 
+        reading_rate_Hz = 20,
         use_data_zeroing = False, #normalization will account for zeroing
         use_data_smoothing = True, 
         use_data_normalization = False, 
         normalization_method = "FOR_HAPTIC_DEVICE" 
     )
     
-    tactile_sensor.calibrate(calibration_readings=100)
-    tactile_sensor.start()
-    
-    start_time = time.time()
-    count = 0
-    while(time.time()-start_time < 10):
-        count += 1
-        tactor_data = tactile_sensor.read(output_raw_data=True)
-        print(tactor_data)
-        time.sleep(tactile_sensor.read_period)
-    print(count)
-    tactile_sensor.stop()
+    tactile_sensor.calibrate(calibration_readings=10)
+
+    test = "PROCESS"
+    if(test.upper() == "THREAD"):
+        tactile_sensor.start(concurrency_method="THREAD")
+        start_time = time.time()
+        count = 0
+        while(time.time()-start_time < 10):
+            count += 1
+            tactor_data = tactile_sensor.read(output_raw_data=True)
+            print(tactor_data)
+            time.sleep(tactile_sensor.read_period)
+        print(count)
+        tactile_sensor.stop()
+
+
+    elif(test.upper() == "PROCESS"):
+        tactile_sensor.start(concurrency_method="PROCESS")
+        time.sleep(10)
+        tactile_sensor.stop()
     
