@@ -1,4 +1,3 @@
-import threading
 import time
 from sensor_group.tactile import Tactile_Sensor
 from sensor_group.camera import Camera
@@ -13,7 +12,7 @@ class Sensor_Reader():
             self.tactile = Tactile_Sensor(
                 tactile_name = "gripper_tactor",
                 port = "/dev/ttyACM0",
-                reading_rate_Hz = 20
+                reading_rate_Hz = 24
             )
         else:
             self.tactile = None
@@ -22,7 +21,7 @@ class Sensor_Reader():
             self.wrist_camera = Camera(
                 camera_name = "wrist_camera",
                 port_num = 6,
-                target_fps = 12
+                target_fps = 24
             )
         else:
             self.wrist_camera = None
@@ -30,8 +29,8 @@ class Sensor_Reader():
         if(self.use_external_camera):
             self.external_camera = Camera(
                 camera_name = "external_camera",
-                port_num = 2,
-                target_fps = 12
+                port_num = 8,
+                target_fps = 24
             )
         else:
             self.external_camera = None
@@ -91,6 +90,9 @@ class Sensor_Reader():
             )
         else:
             self.external_camera_thread = None
+
+        # give time for processes to begin
+        time.sleep(3)
 
 
     def stop(self):

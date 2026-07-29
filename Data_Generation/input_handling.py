@@ -88,6 +88,7 @@ class User_Selection():
 
     def get_dir_path(self):
         if(self.unapplied_updates):
+            print("WARNING: Unapplied updates for user selection (updating path now)")
             self.update_dir_path()
 
         return(self.dir_path)
