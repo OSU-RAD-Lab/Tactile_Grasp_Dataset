@@ -36,6 +36,7 @@ class User_Selection():
         while(True):
             print("\n==========")
             print("Please select the specification to change:")
+            print("\t99) Print Selection")
             print("\t0) None (Finished)")
             print("\t1) Object Shape")
             print("\t2) Object Size")
@@ -65,6 +66,9 @@ class User_Selection():
                     self.prompt_grasp_eef_position()
                 case 6:
                     self.prompt_grasp_interaction()
+                case 99:
+                    self.print_user_selection()
+                    continue
                 case _:
                     print("\nERROR: Incorrect input. Please try again.\n")
                     continue
