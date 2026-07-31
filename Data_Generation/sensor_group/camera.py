@@ -101,7 +101,7 @@ class Camera():
 
     def start_recording_process(self, storage_path, start_time):
         if(storage_path == None):
-            print("WARNING: Using default path to save camera recording")
+            #print("WARNING: Using default path to save camera recording")
             storage_path = pathlib.Path(__file__).parent / "data" / "camera"
             storage_path.mkdir(exist_ok=True, parents=True)
         if(start_time == None):
@@ -125,7 +125,7 @@ class Camera():
                 # get the frame data
                 ret, frame = self.cap.read()
                 while(not ret):
-                    print(f"[{self.camera_name}] Invalid frame, trying again")
+                    #print(f"[{self.camera_name}] Invalid frame, trying again")
                     ret, frame = self.cap.read()
                 # write the frame data
                 self.video_writer.write(frame)
@@ -141,7 +141,8 @@ class Camera():
                 if(remaining_time >= 0):
                     time.sleep(remaining_time)
                 else:
-                    print(f"WARNING: {self.camera_name} has a negative wait time until next read (skipping wait)")
+                    pass
+                    #print(f"WARNING: {self.camera_name} has a negative wait time until next read (skipping wait)")
 
         except Exception as e:
             print("-------------------------")
@@ -161,7 +162,7 @@ class Camera():
     def get_next_frame(self):
         ret, frame = self.cap.read()
         while(not ret):
-            print(f"[{self.camera_name}] Invalid frame, trying again")
+            #print(f"[{self.camera_name}] Invalid frame, trying again")
             ret, frame = self.cap.read()
 
         self.last_frame = frame

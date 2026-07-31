@@ -12,7 +12,7 @@ class Sensor_Reader():
             self.tactile = Tactile_Sensor(
                 tactile_name = "gripper_tactor",
                 port = "/dev/ttyACM0",
-                reading_rate_Hz = 24
+                reading_rate_Hz = 20
             )
         else:
             self.tactile = None
@@ -20,8 +20,8 @@ class Sensor_Reader():
         if(self.use_wrist_camera):
             self.wrist_camera = Camera(
                 camera_name = "wrist_camera",
-                port_num = 6,
-                target_fps = 24
+                port_num = 8,
+                target_fps = 20
             )
         else:
             self.wrist_camera = None
@@ -29,8 +29,8 @@ class Sensor_Reader():
         if(self.use_external_camera):
             self.external_camera = Camera(
                 camera_name = "external_camera",
-                port_num = 8,
-                target_fps = 24
+                port_num = 2,
+                target_fps = 20
             )
         else:
             self.external_camera = None

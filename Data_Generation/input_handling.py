@@ -32,6 +32,7 @@ class User_Selection():
 
 
     def prompt_select(self):
+        self.unapplied_updates = True
         while(True):
             print("\n==========")
             print("Please select the specification to change:")

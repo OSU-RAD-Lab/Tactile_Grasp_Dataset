@@ -167,7 +167,7 @@ class Tactile_Sensor():
             self.get_next_tactile_reading()
             if(not self.last_read_success):
                 time.sleep(0.01)
-                print(f"WARNING: Failed to read the {self.tactile_name} Tactile sensor (using last read value)")
+                #print(f"WARNING: Failed to read the {self.tactile_name} Tactile sensor (using last read value)")
                 continue
 
             process_end_time = time.perf_counter()
@@ -176,13 +176,14 @@ class Tactile_Sensor():
             if(remaining_time >= 0):
                 time.sleep(remaining_time)
             else:
-                print(f"WARNING: {self.tactile_name} has a negative wait time for recording (skipping wait)")
+                #print(f"WARNING: {self.tactile_name} has a negative wait time for recording (skipping wait)")
+                pass
 
 
 
     def start_recording_process(self, storage_path, start_time):
         if(storage_path == None):
-            print("WARNING: Using default path to save tactile recording")
+            #print("WARNING: Using default path to save tactile recording")
             storage_path = pathlib.Path(__file__).parent / "data" / "tactile"
             storage_path.mkdir(exist_ok=True, parents=True)
         if(start_time == None):
@@ -203,7 +204,7 @@ class Tactile_Sensor():
                 # keep reading data until a tactile reading is successfully read
                 success, tactile_reading = self.tactile_reader.read_tactile_sensor()
                 while(not success):
-                    print(f"[{self.tactile_name.upper()}] TACTILE READING FAILED, TRYING AGAIN")
+                    #print(f"[{self.tactile_name.upper()}] TACTILE READING FAILED, TRYING AGAIN")
                     success, tactile_reading = self.tactile_reader.read_tactile_sensor()
                 self.last_read_success = success
                 self.last_raw_readout = tactile_reading
@@ -222,7 +223,8 @@ class Tactile_Sensor():
                 if(remaining_time >= 0):
                     time.sleep(remaining_time)
                 else:
-                    print(f"WARNING: {self.tactile_name} has a negative wait time until next read (skipping wait)")
+                    #print(f"WARNING: {self.tactile_name} has a negative wait time until next read (skipping wait)")
+                    pass
 
         except Exception as e:
             print("-------------------------")
@@ -721,7 +723,7 @@ class Tactile_Reader():
         msg = msg.split(';')
 
         if(len(msg) != self.data_len+1):
-            print(f"[TACTILE] ERROR: Got {msg}")
+            #print(f"[TACTILE] ERROR: Got {msg}")
             is_success = False
             data = None
             return(is_success, data)
@@ -729,7 +731,7 @@ class Tactile_Reader():
         hex_list = list()
         for hex_string in msg[0:len(msg)-1]:
             if(hex_string == ''):
-                print(f"[TACTILE] VALUE ERROR: In {msg}")
+                #print(f"[TACTILE] VALUE ERROR: In {msg}")
                 is_success = False
                 data = None
                 return(is_success, data)
@@ -787,7 +789,8 @@ class Tactile_Reader():
         try:
             self.tactile_reader.write(b'a')
         except serial.serialutil.SerialTimeoutException:
-            print("[TACTILE] Write timeout reached! Skipping sending initial bit")
+            #print("[TACTILE] Write timeout reached! Skipping sending initial bit")
+            pass
         # get the starting time and timeout to wait for acknowledgement bit
         send_time = time.time()
         # flag indicating return character received
@@ -795,7 +798,7 @@ class Tactile_Reader():
         # wait for return byte, stop trying if exceed timeout
         while((not start_byte_received) and ((time.time() - send_time) < timeout)):
             b = int.from_bytes(self.tactile_reader.read(1),'big')
-            print(f"[TACTILE] {b}")
+            #print(f"[TACTILE] {b}")
             if b != 0:
                 start_byte_received = True
             else:
@@ -880,7 +883,7 @@ if(__name__ == "__main__"):
         while(time.time()-start_time < 10):
             count += 1
             tactor_data = tactile_sensor.read(output_raw_data=True)
-            print(tactor_data)
+            #print(tactor_data)
             time.sleep(tactile_sensor.read_period)
         print(count)
         tactile_sensor.stop()

@@ -1,6 +1,7 @@
 import socket
 import struct
 import threading
+import time
 
 class Wireless_Claw():
     def __init__(self):
@@ -34,7 +35,7 @@ class Wireless_Claw():
         self.open_thread.join()
         self.open_thread = threading.Thread(target=self.send_claw_command, args=(self.open_diameter_cm,))
         print("Claw open!")
-
+        time.sleep(0.5)
         print("Setting claw in frame...")
         self.open_in_frame_thread.start()
         self.open_in_frame_thread.join()
@@ -56,6 +57,10 @@ class Wireless_Claw():
                     self.claw_socket.sendall(data)
         
                 # listen for data until you get a done message
+                time.sleep(1)
+                return
+                # returning early to avoid weird issue with freezing
+
                 while True:
                     with threading.Lock():
                         response = self.claw_socket.recv(1024)
