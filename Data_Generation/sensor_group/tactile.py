@@ -214,6 +214,7 @@ class Tactile_Sensor():
                 for d in tactile_reading:
                     tactor_data_string += f"{d},"
                 with open(str(data_path), "a") as csv_data_saver:
+                    print(tactor_data_string)
                     csv_data_saver.write(f"{process_start_time-start_time:.3f},{tactor_data_string}\n")
 
                 # compute time until next frame

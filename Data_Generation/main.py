@@ -18,7 +18,7 @@ def main():
 
     # request descriptions for the grasp to the user
     print("BEGIN INITIALIZATION OF GRASP RECORDING...\n")
-    selection = User_Selection(test=False)
+    selection = User_Selection(test=True)
     selection.prompt_all()
 
 

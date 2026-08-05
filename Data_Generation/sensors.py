@@ -14,6 +14,7 @@ class Sensor_Reader():
                 port = "/dev/ttyACM0",
                 reading_rate_Hz = 20
             )
+
         else:
             self.tactile = None
 
