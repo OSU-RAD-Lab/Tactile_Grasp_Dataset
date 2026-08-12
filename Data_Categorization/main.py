@@ -197,7 +197,7 @@ def main():
                         csv.write(f"{measure},Outcome,Instability,Object,Size,Material,Interaction,Approach,EEF_Position,Start_Time,\n")
 
                     # SYM_ACT (TOP/MID/BOT) grouping
-                    instability_naming = ["Top", "Mid", "Top"]
+                    instability_naming = ["Top", "Mid", "Bot"]
                     for instability_name in instability_naming:
                         with open(str(save_directory / f"{outcome_name.upper()}" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"{outcome_name}_Instable_{instability_name}_{file_name}"), 'w') as csv:
                             csv.write(f"{measure},Outcome,Instability_{instability_name},Object,Size,Material,Interaction,Approach,EEF_Position,Start_Time,\n")
@@ -379,7 +379,7 @@ def main():
             for i in range(len(failure_grasp_list)):
                 dir_list = str(failure_grasp_list[i].data_path).split('/')
                 # save to FAILURE directory
-                with open(str(save_directory / "FAILURE" / f"Failure{file_name}"), 'a') as csv:
+                with open(str(save_directory / "FAILURE" / f"Failure_{file_name}"), 'a') as csv:
                     csv.write(f"{failure_value_list[i]},{failure_grasp_list[i].grasp_outcome},{failure_stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
 
             ########################
