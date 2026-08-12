@@ -6,6 +6,7 @@ from grasp_info import Grasp_Info
 import time
 import matplotlib.pyplot as plt
 import scipy.ndimage
+import scipy.stats
 
 tactor_labels = [
     "L0", "L1", "L2", "L3", "L4", "L5", "L6",
@@ -110,6 +111,51 @@ def get_value_grasp_stability_lists(value_grasp_stability_list):
 
 
 
+def separate_success_and_failure(value_grasp_stability_list):
+    success_list = []
+    failure_list = []
+    for item in value_grasp_stability_list:
+        if(item[1].grasp_outcome == "SUCCESS"):
+            success_list.append(item)
+        elif(item[1].grasp_outcome == "FAILURE"):
+            failure_list.append(item)
+        else:
+            raise(Exception(f"Invalid grasp outcome detected: {item[1].grasp_outcome}"))
+
+    return(success_list, failure_list)
+
+
+def get_boundary_indecies(measure_list, val_grasp_stability_selection=0):
+    measure_list = sorted(measure_list, key = lambda x:(-x[val_grasp_stability_selection]))
+    val_grasp_stability_lists = get_value_grasp_stability_lists(measure_list)
+    median = np.median(val_grasp_stability_lists[val_grasp_stability_selection]) # already sorted (greatest to least)
+    mad = scipy.stats.median_abs_deviation(val_grasp_stability_lists[val_grasp_stability_selection])
+    boundaries = [median+mad,  median+0.5*mad, median-0.5*mad, median-mad]
+
+    indecies = []
+    for i in range(len(val_grasp_stability_lists[val_grasp_stability_selection])):
+        # wait until the value is less than the boundary
+        if(val_grasp_stability_lists[val_grasp_stability_selection][i] < boundaries[len(indecies)]):
+            indecies.append(i)
+            if(len(indecies) == len(boundaries)):
+                return(indecies)
+    
+    while(len(indecies) != len(boundaries)):
+        indecies.append(-1)
+
+    return(indecies)
+
+
+
+def plot_median_with_deviations(measure_list, name):
+    plt.hist(measure_list, bins=100)
+    median = np.median(measure_list)
+    mad = scipy.stats.median_abs_deviation(measure_list)
+    plt.vlines([median+mad, median+0.5*mad, median-0.5*mad, median-mad], colors="red", ymin=0, ymax=10)
+    plt.title(name)
+    plt.show()
+
+
 def main():
     GRASP_DIR = True
 
@@ -121,16 +167,41 @@ def main():
 
         success_dir = save_directory / "SUCCESS"
         success_dir.mkdir(parents=True, exist_ok=True)
+        success_sym_act_top_dir = success_dir / "SYM_ACT_TOP"
+        success_sym_act_top_dir.mkdir(parents=True, exist_ok=True)
+        success_sym_act_mid_dir = success_dir / "SYM_ACT_MID"
+        success_sym_act_mid_dir.mkdir(parents=True, exist_ok=True)
+        success_sym_act_bot_dir = success_dir / "SYM_ACT_BOT"
+        success_sym_act_bot_dir.mkdir(parents=True, exist_ok=True)
 
         failure_dir = save_directory / "FAILURE"
         failure_dir.mkdir(parents=True, exist_ok=True)
+        failure_sym_act_top_dir = failure_dir / "SYM_ACT_TOP"
+        failure_sym_act_top_dir.mkdir(parents=True, exist_ok=True)
+        failure_sym_act_mid_dir = failure_dir / "SYM_ACT_MID"
+        failure_sym_act_mid_dir.mkdir(parents=True, exist_ok=True)
+        failure_sym_act_bot_dir = failure_dir / "SYM_ACT_BOT"
+        failure_sym_act_bot_dir.mkdir(parents=True, exist_ok=True)
         
         file_names = ["Activation.csv", "Symmetry.csv", "Sym_Act.csv", "Sym_Act_Top.csv", "Sym_Act_Mid.csv", "Sym_Act_Bot.csv"]
 
         for file_name in file_names:
+            measure = file_name.split('.')[0]
             with open(str(save_directory / f"{file_name}"), 'w') as csv:
-                measure = file_name.split('.')[0]
-                csv.write(f"{measure},Outcome,Stability,Object,Size,Material,Interaction,Approach,EEF_Position,Start_Time,\n")
+                csv.write(f"{measure},Outcome,Instability,Object,Size,Material,Interaction,Approach,EEF_Position,Start_Time,\n")
+            if(measure.startswith("Sym_Act_")):
+                # SUCCESS/FAILURE grouping
+                outcome_naming = ["Success", "Failure"]
+                for outcome_name in outcome_naming:
+                    with open(str(save_directory / f"{outcome_name.upper()}" / f"{outcome_name}_{file_name}"), 'w') as csv:
+                        csv.write(f"{measure},Outcome,Instability,Object,Size,Material,Interaction,Approach,EEF_Position,Start_Time,\n")
+
+                    # SYM_ACT (TOP/MID/BOT) grouping
+                    instability_naming = ["Top", "Mid", "Top"]
+                    for instability_name in instability_naming:
+                        with open(str(save_directory / f"{outcome_name.upper()}" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"{outcome_name}_Instable_{instability_name}_{file_name}"), 'w') as csv:
+                            csv.write(f"{measure},Outcome,Instability_{instability_name},Object,Size,Material,Interaction,Approach,EEF_Position,Start_Time,\n")
+
 
     else:
         path = pathlib.Path(__file__).parents[1] / "dummy_data" / "*.csv"
@@ -138,7 +209,6 @@ def main():
     activation_list = []
     symmetry_list = []
     symmetry_activation_list = []
-    stabilization_list = []
     for x in glob.glob(str(path)):
         print(x)
         if(GRASP_DIR):
@@ -183,6 +253,8 @@ def main():
         activation_list = sorted(activation_list, key = lambda x:(-x[0]))
         symmetry_list = sorted(symmetry_list, key = lambda x:(-x[0]))
         symmetry_activation_list = sorted(symmetry_activation_list, key = lambda x:(-x[0]))
+        # ALL Grasp indicies
+        bound_indecies = get_boundary_indecies(symmetry_activation_list)
 
         for file_name in file_names:
             measure = file_name.split('.')[0]
@@ -195,29 +267,171 @@ def main():
                     value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_list)
                 case "Sym_Act":
                     value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list)
+                    plot_median_with_deviations(stability_list, name="stable all")
                 case "Sym_Act_Top":
-                    symmetry_activation_list_top = sorted(symmetry_activation_list[0:int(len(symmetry_activation_list)/3)], key = lambda x:(-x[2]))
+                    symmetry_activation_list_top = sorted(symmetry_activation_list[0:bound_indecies[0]], key = lambda x:(-x[2]))
                     value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list_top)
+                    plot_median_with_deviations(stability_list, name="stable sym_act_top all")
                 case "Sym_Act_Mid":
-                    symmetry_activation_list_mid = sorted(symmetry_activation_list[int(len(symmetry_activation_list)/3):int(len(symmetry_activation_list)*2/3)], key = lambda x:(-x[2]))
+                    symmetry_activation_list_mid = sorted(symmetry_activation_list[bound_indecies[1]:bound_indecies[2]], key = lambda x:(-x[2]))
                     value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list_mid)
+                    plot_median_with_deviations(stability_list, name="stable sym_act_mid all")
                 case "Sym_Act_Bot":
-                    symmetry_activation_list_bot = sorted(symmetry_activation_list[int(len(symmetry_activation_list)*2/3):len(symmetry_activation_list)], key = lambda x:(-x[2]))
+                    symmetry_activation_list_bot = sorted(symmetry_activation_list[bound_indecies[3]:len(symmetry_activation_list)], key = lambda x:(-x[2]))
                     value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list_bot)
+                    plot_median_with_deviations(stability_list, name="stable sym_act_bot all")
                 case _:
                     raise(Exception(f"Invalid Measure Used: {measure}"))
 
             for i in range(len(grasp_list)):
                 dir_list = str(grasp_list[i].data_path).split('/')
-                with open(str(save_directory / f"{grasp_list[i].grasp_outcome}" / f"{file_name}"), 'a') as csv:
-                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+                # save to general directory
                 with open(str(save_directory / f"{file_name}"), 'a') as csv:
                     csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
 
 
-    #plt.hist(readings, log=True, bins=1000)
-    #plt.xscale('log')
-    #plt.show()
+        # Separate successful and failed grasps
+        sym_act_success_list, sym_act_failure_list = separate_success_and_failure(symmetry_activation_list)
+        # SUCCESS Grasps
+        success_bound_indecies = get_boundary_indecies(sym_act_success_list)
+        # FAILURE Grasps
+        failure_bound_indecies = get_boundary_indecies(sym_act_failure_list)
+
+        for file_name in file_names:
+            measure = file_name.split('.')[0]
+            value_list = None
+            grasp_list = None
+            match(measure):
+                case "Activation":
+                    continue #value_list, grasp_list, stability_list = get_value_grasp_stability_lists(activation_list)
+                case "Symmetry":
+                    continue #value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_list)
+                case "Sym_Act":
+                    continue #value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list)
+                case "Sym_Act_Top":
+                    # success
+                    sym_act_success_list_top = sorted(sym_act_success_list[0:success_bound_indecies[0]], key = lambda x:(-x[2]))
+                    success_value_list, success_grasp_list, success_stability_list = get_value_grasp_stability_lists(sym_act_success_list_top)
+                    plot_median_with_deviations(success_stability_list, name="stable sym_act_top success")
+
+                    top_success_boundary_indecies = get_boundary_indecies(sym_act_success_list_top, val_grasp_stability_selection=2)
+                    sym_act_success_list_with_instable_top = sym_act_success_list_top[0:top_success_boundary_indecies[0]]
+                    sym_act_success_list_with_instable_mid = sym_act_success_list_top[top_success_boundary_indecies[1]:top_success_boundary_indecies[2]]
+                    sym_act_success_list_with_instable_bot = sym_act_success_list_top[top_success_boundary_indecies[3]:len(sym_act_success_list_top)]
+                    # failure
+                    sym_act_failure_list_top = sorted(sym_act_failure_list[0:failure_bound_indecies[0]], key = lambda x:(-x[2]))
+                    failure_value_list, failure_grasp_list, failure_stability_list = get_value_grasp_stability_lists(sym_act_failure_list_top)
+                    plot_median_with_deviations(failure_stability_list, name="stable sym_act_top failure")
+
+                    top_failure_boundary_indecies = get_boundary_indecies(sym_act_failure_list_top, val_grasp_stability_selection=2)
+                    sym_act_failure_list_with_instable_top = sym_act_failure_list_top[0:top_failure_boundary_indecies[0]]
+                    sym_act_failure_list_with_instable_mid = sym_act_failure_list_top[top_failure_boundary_indecies[1]:top_failure_boundary_indecies[2]]
+                    sym_act_failure_list_with_instable_bot = sym_act_failure_list_top[top_failure_boundary_indecies[3]:len(sym_act_failure_list_top)]
+                case "Sym_Act_Mid":
+                    # success
+                    sym_act_success_list_mid = sorted(sym_act_success_list[success_bound_indecies[1]:success_bound_indecies[2]], key = lambda x:(-x[2]))
+                    success_value_list, success_grasp_list, success_stability_list = get_value_grasp_stability_lists(sym_act_success_list_mid)
+                    plot_median_with_deviations(success_stability_list, name="stable sym_act_mid success")
+
+                    mid_success_boundary_indecies = get_boundary_indecies(sym_act_success_list_mid, val_grasp_stability_selection=2)
+                    sym_act_success_list_with_instable_top = sym_act_success_list_mid[0:mid_success_boundary_indecies[0]]
+                    sym_act_success_list_with_instable_mid = sym_act_success_list_mid[mid_success_boundary_indecies[1]:mid_success_boundary_indecies[2]]
+                    sym_act_success_list_with_instable_bot = sym_act_success_list_mid[mid_success_boundary_indecies[3]:len(sym_act_success_list_mid)]
+                    # failure
+                    sym_act_failure_list_mid = sorted(sym_act_failure_list[failure_bound_indecies[1]:failure_bound_indecies[2]], key = lambda x:(-x[2]))
+                    failure_value_list, failure_grasp_list, failure_stability_list = get_value_grasp_stability_lists(sym_act_failure_list_mid)
+                    plot_median_with_deviations(failure_stability_list, name="stable sym_act_mid failure")
+
+                    mid_failure_boundary_indecies = get_boundary_indecies(sym_act_failure_list_mid, val_grasp_stability_selection=2)
+                    sym_act_failure_list_with_instable_top = sym_act_failure_list_mid[0:mid_failure_boundary_indecies[0]]
+                    sym_act_failure_list_with_instable_mid = sym_act_failure_list_mid[mid_failure_boundary_indecies[1]:mid_failure_boundary_indecies[2]]
+                    sym_act_failure_list_with_instable_bot = sym_act_failure_list_mid[mid_failure_boundary_indecies[3]:len(sym_act_failure_list_mid)]
+                case "Sym_Act_Bot":
+                    # success
+                    sym_act_success_list_bot = sorted(sym_act_success_list[success_bound_indecies[3]:len(sym_act_success_list)], key = lambda x:(-x[2]))
+                    success_value_list, success_grasp_list, success_stability_list = get_value_grasp_stability_lists(sym_act_success_list_bot)
+                    plot_median_with_deviations(success_stability_list, name="stable sym_act_bot success")
+
+                    bot_success_boundary_indecies = get_boundary_indecies(sym_act_success_list_bot, val_grasp_stability_selection=2)
+                    sym_act_success_list_with_instable_top = sym_act_success_list_bot[0:bot_success_boundary_indecies[0]]
+                    sym_act_success_list_with_instable_mid = sym_act_success_list_bot[bot_success_boundary_indecies[1]:bot_success_boundary_indecies[2]]
+                    sym_act_success_list_with_instable_bot = sym_act_success_list_bot[bot_success_boundary_indecies[3]:len(sym_act_success_list_bot)]
+                    # failure
+                    sym_act_failure_list_bot = sorted(sym_act_failure_list[failure_bound_indecies[3]:len(sym_act_failure_list)], key = lambda x:(-x[2]))
+                    failure_value_list, failure_grasp_list, failure_stability_list = get_value_grasp_stability_lists(sym_act_failure_list_bot)
+                    plot_median_with_deviations(failure_stability_list, name="stable sym_act_bot failure")
+
+                    bot_failure_boundary_indecies = get_boundary_indecies(sym_act_failure_list_bot, val_grasp_stability_selection=2)
+                    sym_act_failure_list_with_instable_top = sym_act_failure_list_bot[0:bot_failure_boundary_indecies[0]]
+                    sym_act_failure_list_with_instable_mid = sym_act_failure_list_bot[bot_failure_boundary_indecies[1]:bot_failure_boundary_indecies[2]]
+                    sym_act_failure_list_with_instable_bot = sym_act_failure_list_bot[bot_failure_boundary_indecies[3]:len(sym_act_failure_list_bot)]
+                case _:
+                    raise(Exception(f"Invalid Measure Used: {measure}"))
+
+            # Save Successful Grasp info
+            for i in range(len(success_grasp_list)):
+                dir_list = str(success_grasp_list[i].data_path).split('/')
+                # save to SUCCESS directory
+                with open(str(save_directory / "SUCCESS" / f"Success_{file_name}"), 'a') as csv:
+                    csv.write(f"{success_value_list[i]},{success_grasp_list[i].grasp_outcome},{success_stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            # Save Failed Grasp info
+            for i in range(len(failure_grasp_list)):
+                dir_list = str(failure_grasp_list[i].data_path).split('/')
+                # save to FAILURE directory
+                with open(str(save_directory / "FAILURE" / f"Failure{file_name}"), 'a') as csv:
+                    csv.write(f"{failure_value_list[i]},{failure_grasp_list[i].grasp_outcome},{failure_stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            ########################
+
+            # Outcome: SUCCESS - Instability: TOP
+            value_list, grasp_list, stability_list = get_value_grasp_stability_lists(sym_act_success_list_with_instable_top)
+            for i in range(len(grasp_list)):
+                dir_list = str(grasp_list[i].data_path).split('/')
+                # save to directory
+                with open(str(save_directory / "SUCCESS" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"Success_Instable_Top_{file_name}"), 'a') as csv:
+                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            # Outcome: SUCCESS - Instability: MID
+            value_list, grasp_list, stability_list = get_value_grasp_stability_lists(sym_act_success_list_with_instable_mid)
+            for i in range(len(grasp_list)):
+                dir_list = str(grasp_list[i].data_path).split('/')
+                # save to directory
+                with open(str(save_directory / "SUCCESS" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"Success_Instable_Mid_{file_name}"), 'a') as csv:
+                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            # Outcome: SUCCESS - Instability: BOT
+            value_list, grasp_list, stability_list = get_value_grasp_stability_lists(sym_act_success_list_with_instable_bot)
+            for i in range(len(grasp_list)):
+                dir_list = str(grasp_list[i].data_path).split('/')
+                # save to directory
+                with open(str(save_directory / "SUCCESS" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"Success_Instable_Bot_{file_name}"), 'a') as csv:
+                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            # Outcome: FAILURE - Instability: TOP
+            value_list, grasp_list, stability_list = get_value_grasp_stability_lists(sym_act_failure_list_with_instable_top)
+            for i in range(len(grasp_list)):
+                dir_list = str(grasp_list[i].data_path).split('/')
+                # save to directory
+                with open(str(save_directory / "FAILURE" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"Failure_Instable_Top_{file_name}"), 'a') as csv:
+                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            # Outcome: FAILURE - Instability: MID
+            value_list, grasp_list, stability_list = get_value_grasp_stability_lists(sym_act_failure_list_with_instable_mid)
+            for i in range(len(grasp_list)):
+                dir_list = str(grasp_list[i].data_path).split('/')
+                # save to directory
+                with open(str(save_directory / "FAILURE" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"Failure_Instable_Mid_{file_name}"), 'a') as csv:
+                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
+            # Outcome: FAILURE - Instability: BOT
+            value_list, grasp_list, stability_list = get_value_grasp_stability_lists(sym_act_failure_list_with_instable_bot)
+            for i in range(len(grasp_list)):
+                dir_list = str(grasp_list[i].data_path).split('/')
+                # save to directory
+                with open(str(save_directory / "FAILURE" / f"SYM_ACT_{measure.split('_')[-1].upper()}" / f"Failure_Instable_Bot_{file_name}"), 'a') as csv:
+                    csv.write(f"{value_list[i]},{grasp_list[i].grasp_outcome},{stability_list[i]},{dir_list[-7]},{dir_list[-6]},{dir_list[-5]},{dir_list[-4]},{dir_list[-3]},{dir_list[-2]},{dir_list[-1]},\n")
+
 
 if(__name__ == "__main__"):
     main()
