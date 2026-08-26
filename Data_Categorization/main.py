@@ -88,9 +88,9 @@ def get_symmetry_values(dorsal_haptic_info, volar_haptic_info):
     sym = np.mean(sym, axis=-1)
     return(sym)
 
-def get_measure_stabilization_value(measure_t):
+def get_measure_stabilization_value(measure_t, one_second_sample_size=5, jump_distance=3):
     measure_std_list = []
-    for i in range(0, len(measure_t)-20, 10):
+    for i in range(0, len(measure_t)-one_second_sample_size, jump_distance):
         measure_std_t = np.std(measure_t[i:i+20])
         measure_std_list.append(measure_std_t)
     measure_std = np.mean(measure_std_list)
@@ -146,13 +146,17 @@ def get_boundary_indecies(measure_list, val_grasp_stability_selection=0):
 
 
 
-def plot_median_with_deviations(measure_list, name):
-    plt.hist(measure_list, bins=100)
+def plot_median_with_deviations(measure_list, name, plt_show=True, show_median_lines=True):
+    plt.hist(measure_list, bins=50)
     median = np.median(measure_list)
     mad = scipy.stats.median_abs_deviation(measure_list)
-    plt.vlines([median+mad, median+0.5*mad, median-0.5*mad, median-mad], colors="red", ymin=0, ymax=10)
+    if(show_median_lines):
+        plt.vlines([median+mad, median+0.5*mad, median-0.5*mad, median-mad], colors="red", ymin=0, ymax=10)
+    plt.xlabel("grasp measure")
+    plt.ylabel("count")
     plt.title(name)
-    plt.show()
+    if(plt_show):
+        plt.show()
 
 
 def main():
@@ -202,7 +206,9 @@ def main():
     symmetry_list = []
     symmetry_activation_list = []
     haptic_signals = None
-    tactile_signals = None
+    tactile_signal = []
+    tactile_signals1 = []
+    tactile_signals2 = []
     use_logistic_transform = True
     show_haptic_plots = False
     for x in glob.glob(str(path)):
@@ -215,14 +221,20 @@ def main():
         # 1 second is 20 samples
         # No-Grasp Distribution: 0->100 (mean: -0.122, std: 1.176) -> make mean+2*std = 2.23 the 10% point in logistic function
         # Grasp Distribution: 300->500 (mean: 1.230, std: 1.755) -> make mean+2*std = 4.74 the 90% point
-        start_index = 140
+        start_index = 0
         end_index = None
         tactile_info = grasp.get_tactile_info_from_grasp(start_index=start_index, end_index=end_index, use_logistic_transform=use_logistic_transform)
-        if(tactile_signals is None):
-            tactile_signals = tactile_info.flatten()
-        else:
-            tmp = tactile_info.flatten()
-            tactile_signals = np.append(tactile_signals, tmp)
+        
+        #plt.plot(tactile_info)
+        #plt.show()
+        
+        tmp = tactile_info.flatten()
+        tmp1 = tactile_info[0:150].flatten()
+        tmp2 = tactile_info[350:500].flatten()
+
+        tactile_signal = np.append(tactile_signal, tmp)
+        tactile_signals1 = np.append(tactile_signals1, tmp1)
+        tactile_signals2 = np.append(tactile_signals2, tmp2)
 
         dorsal_haptic_info, volar_haptic_info = grasp.get_haptic_info_from_grasp(start_index=start_index)
         if(haptic_signals is None):
@@ -246,23 +258,156 @@ def main():
         #plt.show()
 
         mean_act = np.mean(act_t)
-        act_stability = get_measure_stabilization_value(act_t)
+        act_stability = get_measure_stabilization_value(act_t, one_second_sample_size=5, jump_distance=3)
 
         mean_sym = np.mean(sym_t)
-        sym_stability = get_measure_stabilization_value(sym_t)
+        sym_stability = get_measure_stabilization_value(sym_t, one_second_sample_size=5, jump_distance=3)
 
         mean_sym_act = np.mean(sym_act_t)
-        sym_act_stability = get_measure_stabilization_value(sym_act_t)
+        sym_act_stability = get_measure_stabilization_value(sym_act_t, one_second_sample_size=5, jump_distance=3)
 
         activation_list.append((mean_act, grasp, act_stability))
         symmetry_list.append((mean_sym, grasp, sym_stability))
         symmetry_activation_list.append((mean_sym_act, grasp, sym_act_stability))
 
+    #plt.hist(tactile_signal, bins=20)
+    #plt.title("Tactile Info")
+    #plt.show()
+
     if(not use_logistic_transform):
-        print(tactile_signals, np.mean(tactile_signals), np.std(tactile_signals))
-        plt.hist(tactile_signals, bins=1000)
-        plt.title("tactile_readings")
+        #stat, p = scipy.stats.normaltest(tactile_signals1)
+        #print(f"NORM RESULTS: {stat}, p={p}")
+        #print("pos")
+        #pos_tmp = np.log(tactile_signals1[tactile_signals1>0])
+        #print(f"MEAN: {np.mean(pos_tmp)} +/- {np.std(pos_tmp)}")
+        #print(f"MEDIAN: {np.median(pos_tmp)} +/- {scipy.stats.median_abs_deviation(pos_tmp)}")
+        #p99_99_pos = np.percentile(pos_tmp, 99.99)
+        #print(f"99.99th-PERCENTILE: {p99_99_pos} (below {(1-0.9999)*len(pos_tmp)} values)")
+        #print("neg")
+        #neg_tmp = np.log(-tactile_signals1[tactile_signals1<0])
+        #print(f"MEAN: {np.mean(neg_tmp)} +/- {np.std(neg_tmp)}")
+        #print(f"MEDIAN: {np.median(neg_tmp)} +/- {scipy.stats.median_abs_deviation(neg_tmp)}")
+        #p99_99_neg = np.percentile(neg_tmp, 99.99)
+        #print(f"99.99th-PERCENTILE: {p99_99_neg} (below {(1-0.9999)*len(neg_tmp)} values)")
+        #plt.hist(pos_tmp, bins=500)
+        #plt.show()
+        #plt.hist(neg_tmp, bins=500)
+        #plt.show()
+
+        plt.hist(np.log(tactile_signal), bins=500)
+        plt.title("Tactile Info")
         plt.show()
+
+        tactile_signals1[tactile_signals1<0] *= -1
+
+        # 99 PERCENTILE FOR zero-contact 
+        p99 = np.percentile(tactile_signals1, 99)
+        print(f"99th-PERCENTILE (noise): {p99} (below {(1-0.99)*len(tactile_signals1)} values)")
+        plotting_data = tactile_signals1[tactile_signals1 < 2*p99]
+        plt.hist(plotting_data, bins=500)
+        plt.xlim((0, 2*p99 + 0.5))
+        plt.show()
+        
+        
+        # 99.9 PERCENTILE FOR zero-contact 
+        p99_9 = np.percentile(tactile_signals1, 99.9)
+        print(f"99.9th-PERCENTILE (noise): {p99_9} (below {(1-0.999)*len(tactile_signals1)} values)")
+        plotting_data = tactile_signals1[tactile_signals1 < 2*p99_9]
+        plt.hist(plotting_data, bins=500)
+        plt.xlim((0, 2*p99_9 + 0.5))
+        plt.show()
+
+        # 99.95 PERCENTILE FOR zero-contact 
+        p99_95 = np.percentile(tactile_signals1, 99.95)
+        print(f"99.95th-PERCENTILE (noise): {p99_95} (below {(1-0.9995)*len(tactile_signals1)} values)")
+        plotting_data = tactile_signals1[tactile_signals1 < 2*p99_95]
+        plt.hist(plotting_data, bins=500)
+        plt.xlim((0, 2*p99_95 + 0.5))
+        plt.show()
+
+        # 99.999 PERCENTILE FOR zero-contact 
+        p99_99 = np.percentile(tactile_signals1, 99.99)
+        print(f"99.99th-PERCENTILE (noise): {p99_99} (below {(1-0.9999)*len(tactile_signals1)} values)")
+        plotting_data = tactile_signals1[tactile_signals1 < 2*p99_99]
+        plt.hist(plotting_data, bins=500)
+        plt.xlim((0, 2*p99_99 + 0.5))
+        plt.show()
+
+        print("---")
+        print("---")
+        print("---")
+
+        #stat, p = scipy.stats.normaltest(tactile_signals2)
+        #print(f"NORM RESULTS: {stat}, p={p}")
+        #print("pos")
+        #pos_tmp = np.log(tactile_signals2[tactile_signals2>5])
+        #print(f"MEAN: {np.mean(pos_tmp)} +/- {np.std(pos_tmp)}")
+        #print(f"MEDIAN: {np.median(pos_tmp)} +/- {scipy.stats.median_abs_deviation(pos_tmp)}")
+        #print(f"90th-PERCENTILE: {np.percentile(pos_tmp, 90)}")
+        #print("neg")
+        #neg_tmp = np.log(-tactile_signals2[tactile_signals2<-5])
+        #print(f"MEAN: {np.mean(neg_tmp)} +/- {np.std(neg_tmp)}")
+        #print(f"MEDIAN: {np.median(neg_tmp)} +/- {scipy.stats.median_abs_deviation(neg_tmp)}")
+        #print(f"90th-PERCENTILE: {np.percentile(neg_tmp, 90)}")
+        #plt.hist(pos_tmp, bins=500)
+        #plt.show()
+        #plt.hist(neg_tmp, bins=500)
+        #plt.show()
+
+
+        noise_value = p99_9
+        def get_and_plot_percentile(data, p, name):
+            # 10th percentile for contact
+            p_contact = np.percentile(data, p)
+            print(f"{p}th-PERCENTILE ({name}): {p_contact} (above {(p/100)*len(data)} values)")
+
+        # positive percentiles for contact
+        combo_signal = np.fabs(tactile_signals2[np.fabs(tactile_signals2) > noise_value])
+        for p in range(0, 99, 5):
+            get_and_plot_percentile(combo_signal, p, name="contact")
+
+        pos_signal = tactile_signals2[tactile_signals2 > noise_value]
+        for p in range(0, 55, 10):
+            get_and_plot_percentile(pos_signal, p, name="pos_contact")
+
+        neg_signal = -(tactile_signals2[tactile_signals2 < -noise_value])
+        for p in range(0, 55, 10):
+            get_and_plot_percentile(neg_signal, p, name="neg_contact")
+        
+
+        # plotting percentile differences between positive and negative activation
+        plotting_data = []
+        diff_plot = []
+        for i in range(1,99):
+            pos_p = np.percentile(pos_signal, i)
+            neg_p = np.percentile(neg_signal, i)
+            plotting_data.append((pos_p, neg_p))
+            diff_plot.append(pos_p-neg_p)
+        plt.plot(plotting_data)
+        plt.show()
+        plt.plot(diff_plot)
+        plt.show()
+
+
+
+
+        #tmp = [tactile_signals1[tactile_signals1>0], tactile_signals2[tactile_signals2>5]]
+        #counts, bins, patches = plt.hist(tmp, bins=500, stacked=True)
+        #plt.title("tactile_readings (positive)")
+        #plt.show()
+        #p = counts[1]/(counts[1]+counts[0])
+        #bins = bins[0:len(bins)-1]
+        #plt.plot(bins, p)
+        #plt.show()
+
+        #tmp = [tactile_signals1[tactile_signals1<0], tactile_signals2[tactile_signals2<-5]]
+        #counts, bins, patches = plt.hist(tmp, bins=500, stacked=True)
+        #plt.title("tactile_readings negative")
+        #plt.show()
+        #p = counts[1]/(counts[1]+counts[0])
+        #bins = bins[0:len(bins)-1]
+        #plt.plot(bins, p)
+        #plt.show()
 
 
     activation_list = sorted(activation_list, key = lambda x:(-x[0]))
@@ -270,6 +415,12 @@ def main():
     symmetry_activation_list = sorted(symmetry_activation_list, key = lambda x:(-x[0]))
     # ALL Grasp indicies
     bound_indecies = get_boundary_indecies(symmetry_activation_list)
+
+    success_selected_sym_act_list = [0.2054273504273504, 0.1889988998899889, 0.1858823529411764, 0.1511957671957671, 0.1321703011422637, 0.1397979797979798, 0.1043757159221076, 0.097679012345679, 0.0196679438058748]
+    failure_selected_sym_act_list = [0.1039243498817966, 0.0931481481481481, 0.1286222222222222, 0.0571941638608305, 0.0537915234822451, 0.0363201911589008, 0.0153703703703703, 0.0058810325476992, 0.0]
+
+    success_selected_instability_list = [0.0476363849388943, 0.0249372779971495, 0.0189279464334645, 0.0498170190826048, 0.0287769806635314, 0.0154176300811168, 0.0458752468147867, 0.0192980348524485, 0.0028174815110276]
+    failure_selected_instability_list = [0.0549709794478634, 0.0409702125429735, 0.0191070391259324, 0.0513309806000732, 0.0374712153500157, 0.0172237624378151, 0.0183380941395327, 0.010236383297605, 0.0]
 
     for file_name in file_names:
         measure = file_name.split('.')[0]
@@ -282,8 +433,16 @@ def main():
                 value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_list)
             case "Sym_Act":
                 value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list)
-                plot_median_with_deviations(value_list, name="Sym_Act all")
-                plot_median_with_deviations(stability_list, name="stable all")
+
+                plot_median_with_deviations(value_list, name="Sym_Act all", plt_show=False)
+                plt.vlines(success_selected_sym_act_list, ymin=0, ymax=8, colors="Green", linewidth=3, linestyles="--")
+                plt.vlines(failure_selected_sym_act_list, ymin=0, ymax=8, colors="Red", linewidth=3, linestyles="--")
+                plt.show()
+
+                plot_median_with_deviations(stability_list, name="stable all", plt_show=False)
+                plt.vlines(success_selected_instability_list, ymin=0, ymax=8, colors="Green", linewidth=3, linestyles="--")
+                plt.vlines(failure_selected_instability_list, ymin=0, ymax=8, colors="Red", linewidth=3, linestyles="--")
+                plt.show()
             case "Sym_Act_Top":
                 symmetry_activation_list_top = sorted(symmetry_activation_list[0:bound_indecies[0]], key = lambda x:(-x[2]))
                 value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list_top)
@@ -326,7 +485,28 @@ def main():
             case "Symmetry":
                 continue #value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_list)
             case "Sym_Act":
+                # SUCCESS Plots
+                success_value_list, success_grasp_list, success_stability_list = get_value_grasp_stability_lists(sym_act_success_list)
+                plot_median_with_deviations(success_value_list, name="sym_act success", plt_show=False)
+                plt.vlines(success_selected_sym_act_list, ymin=0, ymax=8, colors="Green", linewidth=3, linestyles="--")
+                plt.show()
+
+                plot_median_with_deviations(success_stability_list, name="instable success", plt_show=False, show_median_lines=False)
+                plt.vlines(success_selected_instability_list, ymin=0, ymax=8, colors="Green", linewidth=3, linestyles="--")
+                plt.show()
+
+                # FAILURE Plots
+                failure_value_list, failure_grasp_list, failure_stability_list = get_value_grasp_stability_lists(sym_act_failure_list)
+                plot_median_with_deviations(failure_value_list, name="sym_act failure", plt_show=False)
+                plt.vlines(failure_selected_sym_act_list, ymin=0, ymax=8, colors="Red", linewidth=3, linestyles="--")
+                plt.show()
+
+                plot_median_with_deviations(failure_stability_list, name="instable failure", plt_show=False, show_median_lines=False)
+                plt.vlines(failure_selected_instability_list, ymin=0, ymax=8, colors="Red", linewidth=3, linestyles="--")
+                plt.show()
+
                 continue #value_list, grasp_list, stability_list = get_value_grasp_stability_lists(symmetry_activation_list)
+
             case "Sym_Act_Top":
                 # success
                 sym_act_success_list_top = sorted(sym_act_success_list[0:success_bound_indecies[0]], key = lambda x:(-x[2]))

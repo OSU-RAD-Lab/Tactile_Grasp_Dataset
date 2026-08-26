@@ -2,6 +2,7 @@ import pandas as pd
 import pathlib
 import numpy as np
 import scipy.ndimage
+import matplotlib.pyplot as plt
 
 class Grasp_Info():
     def __init__(self, data_path):
@@ -61,10 +62,10 @@ class Grasp_Info():
         readings = dict()
         for tact in self.tactor_labels:
             info = np.array(tactile_df[tact])
-            info = scipy.ndimage.median_filter(info, size=20, mode="nearest")
+            info = scipy.ndimage.median_filter(info, size=10, mode="nearest")
 
             mean_deviation = info - np.mean(info[0:60])
-            mean_deviation[mean_deviation < 0] *= -2.5
+            #mean_deviation[mean_deviation < 0] *= -2.5
             mean_deviation[mean_deviation == 0] = 1
 
             stdev = np.std(info[0:60])
@@ -74,11 +75,45 @@ class Grasp_Info():
             info = mean_deviation / stdev
 
             if(use_logistic_transform):
-                info = 1/(1+np.exp(-1.758*(np.log(info)-3.485))) # based on having logistic fit based on the zero-contact and grasp distributions (mean+2*std for each distribution for the 10% (using zero-contact dist.) and 90% (using grasp dist.) mark)
+                #based on percentiles [0, 10, 20, 30, 40]
+                normalized_readings = []
+                p99_99 = False
+                p99_95 = False
+                p99_9 = True
+                if(p99_99):
+                    # using noise cutoff of 99.99 percentile
+                    noise_cutoff = 8.47063
+                    pos = np.array([noise_cutoff, 10.06509, 12.33830, 15.60442, 20.40071])
+                    neg = np.array([noise_cutoff, 9.40618, 10.69437, 12.00037, 13.29524])
+                elif(p99_95):
+                    # using noise cutoff of 99.95 percentile
+                    noise_cutoff = 6.15099
+                    pos = np.array([noise_cutoff, 7.50957, 9.15927, 11.48420, 15.05535])
+                    neg = np.array([noise_cutoff, 6.95727, 7.81946, 9.06262, 10.52378])
+                else:
+                    # using noise cutoff of 99.9 percentile
+                    noise_cutoff = 5.27407
+                    pos = np.array([noise_cutoff, 6.24632, 7.76855, 9.74764, 12.71002])
+                    neg = np.array([noise_cutoff, 5.85267, 6.62770, 7.65014, 9.06710])
+
+                for reading in info:
+                    if(np.fabs(reading) < noise_cutoff):
+                        index = 0
+                    elif(reading < 0):
+                        index = np.sum(-reading >= neg)
+                    else:
+                        index = np.sum(reading >= pos)
+                    bin = index/len(pos) # 0, 0.2, 0.4, 0.6, 0.8, 1.0
+                    normalized_readings.append(bin)
+
+                info = np.array(normalized_readings)
+                        
+                #info = 1/(1+np.exp(-1.758*(np.log(info)-3.485))) # based on having logistic fit based on the zero-contact and grasp distributions (mean+2*std for each distribution for the 10% (using zero-contact dist.) and 90% (using grasp dist.) mark)
                 #info = 1/(1+np.exp(-1.34*(np.log(info)-2.29))) # based on having logistic fit with 0.1->0.9 cover the tactile reading distribution from the mean to mean+2std
                 #info = 1/(1+np.exp(-3.0*np.log(info) + 10)) #based on arbitrary function that looked good with the data
             else:
-                info = np.log(info)
+                #info = np.log(info)
+                pass
 
             readings[tact] = info
         return(readings)
@@ -128,6 +163,50 @@ class Grasp_Info():
         dorsal_haptic_info = np.array(dorsal_haptic_info)
         volar_haptic_info = np.array(volar_haptic_info)
 
+
+        def reduce_haptic_signal_bandwidth(haptic_data, incoming_hz=20, outgoing_hz=5):
+            timing_actual = 1/incoming_hz #default: 0.05
+            timing_new = 1/outgoing_hz #default: 0.2
+            count = 0.0
+
+            haptic_list = []
+            for haptic_data_reading in haptic_data:
+                # update count according to incoming hz amount of time for each reading
+                count += timing_actual
+                # only append value if time has passed according to outgoing hz (and reset count)
+                if(count > timing_new):
+                    haptic_list.append(haptic_data_reading)
+                    count = 0.0
+
+            return(np.array(haptic_list))
+
+        dorsal_haptic_info = reduce_haptic_signal_bandwidth(dorsal_haptic_info, incoming_hz=20, outgoing_hz=5)
+        volar_haptic_info = reduce_haptic_signal_bandwidth(volar_haptic_info, incoming_hz=20, outgoing_hz=5)
+
+
+
+        def haptic_P_controller(haptic_data, P=0.8):
+            prev_haptic_data = np.array([0.0, 0.0, 0.0])
+
+            haptic_list = []
+            for haptic_data_reading in haptic_data:
+                haptic_data_reading = prev_haptic_data + P*(haptic_data_reading - prev_haptic_data)
+
+                # ensure the data does not go out of bounds
+                for i in range(len(haptic_data_reading)):
+                    if(haptic_data_reading[i] > 1.0):
+                        haptic_data_reading[i] = 1.0
+                    elif(haptic_data_reading[i] < 0.0):
+                        haptic_data_reading[i] = 0.0
+
+                haptic_list.append(haptic_data_reading)
+                prev_haptic_data = haptic_data_reading
+
+            return(np.array(haptic_list))
+        
+        dorsal_haptic_info = haptic_P_controller(dorsal_haptic_info, P=0.8)
+        volar_haptic_info = haptic_P_controller(volar_haptic_info, P=0.8)
+
         def bin_haptic_data(haptic_data, num_bins):
             binned_data = haptic_data*num_bins + 0.5
             binned_data = binned_data.astype(int)
@@ -145,10 +224,15 @@ class Grasp_Info():
         tactile_info = self.tactile_info_post_transformation(tactile_info)
         return(tactile_info[start_index:end_index])
 
-    def get_haptic_info_from_grasp(self, start_index=0, end_index=None):
-        tactile_info = self.get_tactile_info_from_grasp(start_index=start_index, end_index=end_index)
+    def get_haptic_info_from_grasp(self, start_index=0, end_index=None, use_logistic_transform=True):
+        tactile_info = self.get_tactile_info_from_grasp(start_index=start_index, end_index=end_index, use_logistic_transform=use_logistic_transform)
         dorsal_haptic_info, volar_haptic_info = self.tactile_to_haptic_info(tactile_info)
         return(dorsal_haptic_info, volar_haptic_info)
+
+    def plot_tactile(self):
+        tactile_info = self.get_tactile_info_from_grasp()
+        plt.plot(tactile_info)
+        plt.show()
 
 
         
